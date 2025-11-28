@@ -1,78 +1,262 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Zap, Anchor, Heart, Shield, Play, Pause, ArrowRight, Check, RefreshCw } from 'lucide-react';
+import { Zap, Anchor, Heart, Activity, Play, Pause, ArrowRight, Lock, Check } from 'lucide-react';
 
+/* ==========================================================================
+   THE GAME PLAN (CONFIGURATION)
+   ==========================================================================
+   Tweak these values to adjust game mechanics, difficulty, and visuals.
+   This section serves as the "Brain" of the simulation.
+*/
+
+const GAME_CONFIG = {
+  // 1. VISUAL THEME (Duolingo-inspired)
+  theme: {
+    colors: {
+      background: '#FFFFFF',
+      appBg: '#F7F7F7',
+      primary: '#58CC02',    // Green (Success/Action)
+      primaryDark: '#46A302',
+      secondary: '#1CB0F6',  // Blue (Discipline)
+      secondaryDark: '#118CC0',
+      accent: '#FFC800',     // Yellow (Innovation)
+      accentDark: '#E5B400',
+      danger: '#FF4B4B',     // Red (Stress)
+      dangerDark: '#D32F2F',
+      textMain: '#4B4B4B',
+      textLight: '#AFAFAF',
+      border: '#E5E5E5',
+      particlePalette: ['#58CC02', '#1CB0F6', '#FFC800', '#FF9600', '#CE82FF']
+    },
+    ui: {
+      borderRadius: '20px',
+      borderWidth: '2px',
+      depth: '4px', // The size of the "3D" bottom border
+    }
+  },
+
+  // 2. PHYSICS CONSTANTS
+  physics: {
+    numParticles: 60,
+    baseRadius: 110,
+    friction: 0.96,
+    gravityStrength: 0.0006,
+    innovationMultiplier: 0.25, // How much the slider impacts speed
+    boundaryBounce: -0.85,
+  },
+
+  // 3. GAMEPLAY BALANCE
+  mechanics: {
+    stressThreshold: 5,         // Collisions required to raise stress
+    stagnationThreshold: 0.8,   // Low speed required to raise stagnation
+    recoveryRate: 0.3,          // How fast meters heal when condition is met
+    damageRate: 0.5,            // How fast meters fill when bad things happen
+  },
+
+  // 4. LEVEL PROGRESSION (Progressive Disclosure)
+  levels: {
+    1: {
+      title: "The Void",
+      description: "In the beginning, there is only energy. Move the slider to spark ideas.",
+      unlocks: ['innovation'],
+      color: '#FFC800'
+    },
+    2: {
+      title: "The Container",
+      description: "Energy without direction is lost. Add Discipline to create a structure.",
+      unlocks: ['innovation', 'discipline'],
+      color: '#1CB0F6'
+    },
+    3: {
+      title: "The Organism",
+      description: "The system is alive. Watch for Stress (too fast) and Stagnation (too slow).",
+      unlocks: ['innovation', 'discipline', 'health'],
+      color: '#FF4B4B'
+    },
+    4: {
+      title: "The Architect",
+      description: "Mastery is movement. Use protocols to pulse between states.",
+      unlocks: ['innovation', 'discipline', 'health', 'protocols'],
+      color: '#58CC02'
+    }
+  }
+};
+
+/* ==========================================================================
+   STYLES (CSS-IN-JS)
+   ==========================================================================
+   Standard CSS properties. No utility classes.
+*/
+const styles = {
+  app: {
+    minHeight: '100vh',
+    backgroundColor: GAME_CONFIG.theme.colors.appBg,
+    fontFamily: '"Nunito", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '20px',
+    color: GAME_CONFIG.theme.colors.textMain,
+  },
+  header: {
+    width: '100%',
+    maxWidth: '600px',
+    marginBottom: '20px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: '24px',
+    fontWeight: '800',
+    color: GAME_CONFIG.theme.colors.textLight,
+  },
+  card: {
+    backgroundColor: GAME_CONFIG.theme.colors.background,
+    borderRadius: GAME_CONFIG.theme.ui.borderRadius,
+    border: `${GAME_CONFIG.theme.ui.borderWidth} solid ${GAME_CONFIG.theme.colors.border}`,
+    borderBottomWidth: GAME_CONFIG.theme.ui.depth,
+    padding: '20px',
+    width: '100%',
+    maxWidth: '600px',
+    marginBottom: '20px',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  canvasContainer: {
+    width: '100%',
+    height: '350px',
+    borderRadius: '16px',
+    backgroundColor: '#F0F0F0',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  controlRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '15px',
+    marginBottom: '20px',
+  },
+  sliderContainer: {
+    width: '100%',
+  },
+  labelRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginBottom: '8px',
+    fontWeight: 'bold',
+    fontSize: '14px',
+  },
+  rangeInput: {
+    width: '100%',
+    cursor: 'pointer',
+    height: '10px',
+    borderRadius: '5px',
+    outline: 'none',
+    appearance: 'none',
+    backgroundColor: '#E5E5E5',
+  },
+  button: {
+    width: '100%',
+    padding: '15px',
+    borderRadius: '16px',
+    border: 'none',
+    fontWeight: '800',
+    fontSize: '14px',
+    textTransform: 'uppercase',
+    letterSpacing: '1px',
+    cursor: 'pointer',
+    transition: 'transform 0.1s',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '10px',
+    color: '#FFF',
+    borderBottom: `4px solid rgba(0,0,0,0.2)`,
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    backdropFilter: 'blur(5px)',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    padding: '40px',
+    textAlign: 'center',
+  },
+  badge: {
+    padding: '5px 12px',
+    borderRadius: '12px',
+    fontWeight: 'bold',
+    fontSize: '12px',
+    textTransform: 'uppercase',
+  }
+};
+
+/* ==========================================================================
+   MAIN COMPONENT
+   ==========================================================================
+*/
 const StructureSimulator = () => {
-  // --- GAME STATE ---
-  const [level, setLevel] = useState(1); // 1: Void, 2: Container, 3: Organism, 4: Architect
+  // --- STATE ---
+  const [level, setLevel] = useState(1);
   const [showTutorial, setShowTutorial] = useState(true);
   
-  // --- SIMULATION STATE ---
+  // Physics State
   const [innovation, setInnovation] = useState(50);
-  const [discipline, setDiscipline] = useState(0); // Starts locked at 0
+  const [discipline, setDiscipline] = useState(0);
+  
+  // Health State (Level 3+)
   const [stress, setStress] = useState(0);
   const [stagnation, setStagnation] = useState(0);
+  
   const [isPlaying, setIsPlaying] = useState(true);
 
-  // --- REFS ---
+  // --- REFS & ENGINE ---
   const canvasRef = useRef(null);
   const requestRef = useRef();
   const particles = useRef([]);
   const stressRef = useRef(0);
   const stagnationRef = useRef(0);
 
-  // --- CONFIG ---
-  const numParticles = 60;
-  
-  // --- COLOR PALETTE (Duo Style) ---
-  const colors = {
-    bg: '#ffffff',
-    primary: '#58CC02', // Green
-    secondary: '#1CB0F6', // Blue
-    accent: '#FFC800', // Yellow
-    danger: '#FF4B4B', // Red
-    dark: '#2B2B2B',
-    grey: '#E5E5E5',
-    particles: ['#58CC02', '#1CB0F6', '#FFC800', '#FF9600', '#CE82FF']
-  };
-
   // --- INITIALIZATION ---
   useEffect(() => {
-    const initParticles = () => {
-      particles.current = [];
-      for (let i = 0; i < numParticles; i++) {
-        particles.current.push({
-          x: Math.random() * 400,
-          y: Math.random() * 400,
-          vx: (Math.random() - 0.5) * 4,
-          vy: (Math.random() - 0.5) * 4,
-          size: Math.random() * 6 + 4,
-          color: colors.particles[Math.floor(Math.random() * colors.particles.length)],
-        });
-      }
-    };
-    initParticles();
-  }, []);
+    // Reset or Initialize Particles
+    particles.current = [];
+    const { numParticles } = GAME_CONFIG.physics;
+    const { particlePalette } = GAME_CONFIG.theme.colors;
 
-  // --- LEVEL MANAGEMENT ---
-  const nextLevel = () => {
-    setLevel(prev => Math.min(4, prev + 1));
-    setShowTutorial(true);
-    // Reset specific states for levels
-    if (level === 1) setDiscipline(50); // Auto-set discipline when unlocking level 2
+    for (let i = 0; i < numParticles; i++) {
+      particles.current.push({
+        x: Math.random() * 400,
+        y: Math.random() * 400,
+        vx: (Math.random() - 0.5) * 4,
+        vy: (Math.random() - 0.5) * 4,
+        size: Math.random() * 6 + 4,
+        color: particlePalette[Math.floor(Math.random() * particlePalette.length)],
+      });
+    }
+  }, []); // Run once on mount
+
+  // --- LEVEL UP LOGIC ---
+  const handleLevelUp = () => {
+    if (level < 4) {
+      const nextLvl = level + 1;
+      setLevel(nextLvl);
+      setShowTutorial(true);
+      
+      // Auto-set reasonable defaults for the new mechanic
+      if (nextLvl === 2) setDiscipline(40);
+      if (nextLvl === 3) { setStress(0); setStagnation(0); }
+    }
   };
 
-  const ScenarioButton = ({ title, action, color }) => (
-    <button 
-      onClick={action}
-      className={`w-full py-3 px-4 rounded-2xl font-bold text-white shadow-[0_4px_0_0_rgba(0,0,0,0.2)] active:shadow-none active:translate-y-1 transition-all flex items-center justify-between group`}
-      style={{ backgroundColor: color }}
-    >
-      <span>{title}</span>
-      <ArrowRight size={20} className="opacity-50 group-hover:opacity-100 transition-opacity" />
-    </button>
-  );
-
-  // --- PHYSICS ENGINE ---
+  // --- PHYSICS LOOP ---
   const animate = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -82,163 +266,157 @@ const StructureSimulator = () => {
     const centerX = width / 2;
     const centerY = height / 2;
 
-    // Clear Canvas
-    ctx.fillStyle = colors.bg;
-    ctx.fillRect(0, 0, width, height);
+    const config = GAME_CONFIG;
     
-    // Environment Feedback (Background Tint)
+    // 1. CLEAR
+    ctx.clearRect(0, 0, width, height);
+    
+    // 2. BACKGROUND FEEDBACK (Stress/Stagnation Tints)
     if (level >= 3) {
-        if (stressRef.current > 50) {
-            ctx.fillStyle = `rgba(255, 75, 75, ${stressRef.current / 500})`;
-            ctx.fillRect(0, 0, width, height);
-        }
-        if (stagnationRef.current > 50) {
-            ctx.fillStyle = `rgba(100, 100, 100, ${stagnationRef.current / 400})`;
-            ctx.fillRect(0, 0, width, height);
-        }
+      if (stressRef.current > 50) {
+        ctx.fillStyle = `rgba(255, 75, 75, ${stressRef.current / 600})`;
+        ctx.fillRect(0, 0, width, height);
+      }
+      if (stagnationRef.current > 50) {
+        ctx.fillStyle = `rgba(100, 100, 100, ${stagnationRef.current / 500})`;
+        ctx.fillRect(0, 0, width, height);
+      }
     }
 
-    // Draw Container (Only Level 2+)
-    const baseRadius = 120;
-    // Radius shrinks slightly with discipline, but line gets thicker
-    const boundaryRadius = baseRadius + (100 - discipline) * 0.5;
-    
+    // 3. DRAW CONTAINER (Level 2+)
+    const baseR = config.physics.baseRadius;
+    // Container gets tighter as discipline increases
+    const containerR = baseR + (100 - discipline) * 0.5;
+
     if (level >= 2) {
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, boundaryRadius, 0, Math.PI * 2);
-        
-        // Container Style
-        ctx.strokeStyle = colors.grey;
-        ctx.lineWidth = 8;
-        ctx.stroke(); // Background ring
-        
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, boundaryRadius, 0, Math.PI * 2);
-        
-        // Active ring
-        if (stressRef.current > 80 && level >= 3) {
-             ctx.strokeStyle = colors.danger;
-             ctx.setLineDash([15, 10]);
-        } else {
-             ctx.strokeStyle = colors.secondary;
-             ctx.setLineDash([]);
-        }
-        
-        // Opacity based on discipline (if level 2, always visible but maybe thin if low discipline)
-        // If discipline is 0, the container is effectively "open" (invisible active ring)
-        ctx.lineWidth = 8;
-        if (discipline < 10) ctx.strokeStyle = 'rgba(0,0,0,0)';
-        
-        ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, containerR, 0, Math.PI * 2);
+      
+      // Styling the container
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#E0E0E0'; // Base ring
+      ctx.stroke();
+
+      // Active Ring
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, containerR, 0, Math.PI * 2);
+      
+      if (stressRef.current > 80 && level >= 3) {
+        ctx.strokeStyle = config.theme.colors.danger;
+        ctx.setLineDash([15, 10]); // "Cracking" effect
+      } else {
+        ctx.strokeStyle = config.theme.colors.secondary;
+        ctx.setLineDash([]);
+      }
+      
+      // If discipline is 0, make it effectively invisible/ghostly
+      ctx.globalAlpha = Math.max(0.1, discipline / 100);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+      ctx.setLineDash([]);
     }
 
-    // Particle Logic
+    // 4. PARTICLES
     let collisions = 0;
     let totalSpeed = 0;
 
     particles.current.forEach(p => {
-      // 1. MOVEMENT (Innovation)
-      // Base speed + Innovation multiplier
-      const speedMult = 0.5 + (innovation / 20);
-      const jitter = innovation / 100;
+      // A. INNOVATION (Velocity)
+      const speedMult = 0.5 + (innovation * config.physics.innovationMultiplier / 10);
+      const jitter = innovation / 150;
 
-      // Random jitter only adds if innovation is high
-      p.vx += (Math.random() - 0.5) * jitter * 0.5;
-      p.vy += (Math.random() - 0.5) * jitter * 0.5;
+      p.vx += (Math.random() - 0.5) * jitter;
+      p.vy += (Math.random() - 0.5) * jitter;
 
-      // 2. GRAVITY (Discipline) - Only Level 2+
-      if (level >= 2 && discipline > 10) {
-          const dx = centerX - p.x;
-          const dy = centerY - p.y;
-          const gravity = discipline * 0.0005;
-          p.vx += dx * gravity;
-          p.vy += dy * gravity;
+      // B. DISCIPLINE (Gravity) - Only if unlocked
+      if (level >= 2 && discipline > 5) {
+        const dx = centerX - p.x;
+        const dy = centerY - p.y;
+        const gravity = discipline * config.physics.gravityStrength;
+        p.vx += dx * gravity;
+        p.vy += dy * gravity;
       }
 
-      // 3. FRICTION
-      // Friction prevents infinite acceleration
-      const friction = 0.96; 
-      p.vx *= friction;
-      p.vy *= friction;
+      // C. FRICTION
+      p.vx *= config.physics.friction;
+      p.vy *= config.physics.friction;
 
-      // Update Position
+      // D. MOVE
       p.x += p.vx * speedMult;
       p.y += p.vy * speedMult;
       
       totalSpeed += Math.abs(p.vx) + Math.abs(p.vy);
 
-      // 4. BOUNDARY PHYSICS
+      // E. BOUNDARIES
       const dx = p.x - centerX;
       const dy = p.y - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dist = Math.sqrt(dx*dx + dy*dy);
 
-      if (level >= 2 && discipline > 20) {
-          // Hard Containment
-          if (dist + p.size > boundaryRadius) {
-              // Collision Vector
-              const angle = Math.atan2(dy, dx);
-              
-              // Push back inside
-              p.x = centerX + Math.cos(angle) * (boundaryRadius - p.size);
-              p.y = centerY + Math.sin(angle) * (boundaryRadius - p.size);
-
-              // Bounce
-              p.vx *= -0.8;
-              p.vy *= -0.8;
-              
-              // Calculate collision force for stress
-              const impact = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
-              if (impact > 2) collisions++;
-          }
+      // Container Collision (Level 2+)
+      if (level >= 2 && discipline > 15) {
+        if (dist + p.size > containerR) {
+          const angle = Math.atan2(dy, dx);
+          // Snap back
+          p.x = centerX + Math.cos(angle) * (containerR - p.size);
+          p.y = centerY + Math.sin(angle) * (containerR - p.size);
+          
+          // Bounce
+          p.vx *= config.physics.boundaryBounce;
+          p.vy *= config.physics.boundaryBounce;
+          
+          // Check impact for Stress
+          const impact = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+          if (impact > 2) collisions++;
+        }
       } else {
-          // Wrap Around (The Void)
-          if (p.x < -20) p.x = width + 20;
-          if (p.x > width + 20) p.x = -20;
-          if (p.y < -20) p.y = height + 20;
-          if (p.y > height + 20) p.y = -20;
+        // Wrap-around (The Void)
+        if (p.x < -20) p.x = width + 20;
+        if (p.x > width + 20) p.x = -20;
+        if (p.y < -20) p.y = height + 20;
+        if (p.y > height + 20) p.y = -20;
       }
 
-      // Draw Particle (Juicy)
+      // F. DRAW
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       
-      // Color Logic (Grey if stagnated)
+      // Greyscale if stagnated
       if (level >= 3 && stagnationRef.current > 70) {
-          ctx.fillStyle = '#9CA3AF';
+        ctx.fillStyle = '#CCCCCC';
       } else {
-          ctx.fillStyle = p.color;
+        ctx.fillStyle = p.color;
       }
       ctx.fill();
       
-      // Specular highlight for 3D feel
+      // Shine
       ctx.beginPath();
       ctx.arc(p.x - p.size*0.3, p.y - p.size*0.3, p.size/3, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0.4)';
       ctx.fill();
     });
 
-    // --- GAME LOGIC (Level 3+) ---
+    // 5. GAME LOGIC UPDATES (Level 3+)
     if (level >= 3) {
-        // Stress Logic (Collisions)
-        if (collisions > 5) {
-            stressRef.current = Math.min(100, stressRef.current + 0.5);
-        } else {
-            stressRef.current = Math.max(0, stressRef.current - 0.3);
-        }
+      // Stress Calculation
+      if (collisions > config.mechanics.stressThreshold) {
+        stressRef.current = Math.min(100, stressRef.current + config.mechanics.damageRate);
+      } else {
+        stressRef.current = Math.max(0, stressRef.current - config.mechanics.recoveryRate);
+      }
 
-        // Stagnation Logic (Low Speed)
-        const avgSpeed = totalSpeed / numParticles;
-        if (avgSpeed < 1.0) {
-            stagnationRef.current = Math.min(100, stagnationRef.current + 0.3);
-        } else {
-            stagnationRef.current = Math.max(0, stagnationRef.current - 0.5);
-        }
+      // Stagnation Calculation
+      const avgSpeed = totalSpeed / config.physics.numParticles;
+      if (avgSpeed < config.mechanics.stagnationThreshold) {
+        stagnationRef.current = Math.min(100, stagnationRef.current + config.mechanics.damageRate);
+      } else {
+        stagnationRef.current = Math.max(0, stagnationRef.current - config.mechanics.recoveryRate);
+      }
 
-        // Sync to React State (Throttled)
-        if (Math.random() > 0.9) {
-            setStress(Math.round(stressRef.current));
-            setStagnation(Math.round(stagnationRef.current));
-        }
+      // Sync to React State (Throttled random check to avoid 60fps re-renders)
+      if (Math.random() > 0.9) {
+        setStress(Math.round(stressRef.current));
+        setStagnation(Math.round(stagnationRef.current));
+      }
     }
 
     if (isPlaying) requestRef.current = requestAnimationFrame(animate);
@@ -250,211 +428,190 @@ const StructureSimulator = () => {
   }, [isPlaying, innovation, discipline, level]);
 
 
-  // --- UI COMPONENTS ---
+  // --- SUB-COMPONENTS ---
 
-  const ProgressBar = () => (
-    <div className="w-full h-4 bg-gray-200 rounded-full mb-6 overflow-hidden">
-        <div 
-            className="h-full transition-all duration-500 ease-out"
-            style={{ 
-                width: `${(level / 4) * 100}%`,
-                backgroundColor: colors.primary 
-            }}
-        />
+  const Slider = ({ label, val, setVal, color, locked }) => (
+    <div style={{...styles.sliderContainer, opacity: locked ? 0.5 : 1}}>
+      <div style={styles.labelRow}>
+        <span style={{display:'flex', alignItems:'center', gap: '8px', color: GAME_CONFIG.theme.colors.textMain}}>
+          {locked && <Lock size={14}/>} {label}
+        </span>
+        <span style={{color: color}}>{val}</span>
+      </div>
+      <input 
+        type="range" min="0" max="100" value={val}
+        onChange={(e) => !locked && setVal(parseInt(e.target.value))}
+        disabled={locked}
+        style={{
+          ...styles.rangeInput,
+          background: `linear-gradient(to right, ${color} ${val}%, #E5E5E5 ${val}%)`
+        }}
+      />
     </div>
   );
 
-  const HealthMeter = ({ label, value, color, icon: Icon }) => (
-    <div className="flex flex-col gap-1 w-full">
-        <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-wide">
-            <span className="flex items-center gap-1"><Icon size={12}/> {label}</span>
-            <span>{value}%</span>
-        </div>
-        <div className="h-6 w-full bg-gray-200 rounded-xl overflow-hidden border-2 border-gray-200 relative">
-            <div 
-                className="h-full transition-all duration-300 rounded-lg"
-                style={{ 
-                    width: `${value}%`, 
-                    backgroundColor: color 
-                }}
-            />
-        </div>
+  const HealthBar = ({ label, val, color }) => (
+    <div style={{width: '100%'}}>
+      <div style={{...styles.labelRow, fontSize:'12px', color: GAME_CONFIG.theme.colors.textLight, textTransform: 'uppercase'}}>
+        <span>{label}</span>
+        <span>{val}%</span>
+      </div>
+      <div style={{width: '100%', height:'12px', backgroundColor: '#E5E5E5', borderRadius:'6px', overflow:'hidden'}}>
+        <div style={{
+          width: `${val}%`, 
+          height:'100%', 
+          backgroundColor: color, 
+          transition: 'width 0.2s'
+        }}/>
+      </div>
     </div>
   );
+
+  const ProtocolButton = ({ title, color, onClick }) => (
+    <button 
+      onClick={onClick}
+      style={{
+        ...styles.button,
+        backgroundColor: color,
+        borderBottomColor: `${color}88`, // simple darken
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(1px)'}
+      onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+    >
+      <span>{title}</span>
+    </button>
+  );
+
+  // --- RENDER ---
+  const currentLevelConfig = GAME_CONFIG.levels[level];
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 flex flex-col items-center p-4 md:p-8">
+    <div style={styles.app}>
       
-      {/* HEADER AREA */}
-      <div className="w-full max-w-2xl mb-4">
-        <div className="flex justify-between items-center mb-2">
-            <h1 className="text-2xl font-black text-slate-700 tracking-tight">
-                Structure<span style={{color: colors.primary}}>Sim</span>
-            </h1>
-            <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-xl font-bold text-sm border-2 border-yellow-200">
-                Lvl {level}: {
-                    level === 1 ? "The Void" : 
-                    level === 2 ? "The Container" : 
-                    level === 3 ? "The Biology" : "The Architect"
-                }
-            </div>
+      {/* HEADER */}
+      <div style={styles.header}>
+        <div>
+          <span style={{color: GAME_CONFIG.theme.colors.textLight, fontSize:'12px', fontWeight:'bold', textTransform:'uppercase'}}>SIMULATOR</span>
+          <div style={styles.title}>Structure<span style={{color: GAME_CONFIG.theme.colors.primary}}>OS</span></div>
         </div>
-        <ProgressBar />
+        <div style={{
+          ...styles.badge, 
+          backgroundColor: currentLevelConfig.color, 
+          color: '#FFF'
+        }}>
+          Lvl {level}: {currentLevelConfig.title}
+        </div>
       </div>
 
-      {/* MAIN CARD */}
-      <div className="bg-white p-2 rounded-3xl shadow-[0_8px_0_0_rgba(0,0,0,0.05)] border-2 border-slate-100 w-full max-w-2xl overflow-hidden relative">
+      {/* VISUALIZATION CARD */}
+      <div style={styles.card}>
         
-        {/* TUTORIAL OVERLAY */}
+        {/* Tutorial Overlay */}
         {showTutorial && (
-            <div className="absolute inset-0 z-20 bg-white/90 backdrop-blur-sm flex items-center justify-center p-8">
-                <div className="bg-white p-6 rounded-3xl shadow-2xl border-2 border-slate-100 max-w-sm text-center">
-                    <div className="mb-4 flex justify-center">
-                        {level === 1 && <Zap size={48} color={colors.accent} />}
-                        {level === 2 && <Shield size={48} color={colors.secondary} />}
-                        {level === 3 && <Heart size={48} color={colors.danger} />}
-                        {level === 4 && <RefreshCw size={48} color={colors.primary} />}
-                    </div>
-                    <h2 className="text-xl font-black mb-2 text-slate-800">
-                        {level === 1 ? "Start with Energy" :
-                         level === 2 ? "Build the Walls" :
-                         level === 3 ? "Watch the Pulse" :
-                         "Master the Flow"}
-                    </h2>
-                    <p className="text-slate-500 mb-6 leading-relaxed">
-                        {level === 1 ? "Ideas are like particles. Without structure, they drift away. Use the 'Innovation' slider to add energy." :
-                         level === 2 ? "Energy needs a container. Use 'Discipline' to pull your ideas into a usable orbit." :
-                         level === 3 ? "Systems are alive. Too much chaos causes Stress. Too much order causes Stagnation." :
-                         "You cannot stand still. Use Protocols to pulse between focused work and creative freedom."}
-                    </p>
-                    <button 
-                        onClick={() => setShowTutorial(false)}
-                        className="w-full py-3 rounded-xl font-bold text-white shadow-[0_4px_0_0_rgba(0,0,0,0.2)] active:translate-y-1 active:shadow-none transition-all"
-                        style={{ backgroundColor: colors.primary }}
-                    >
-                        Let's Go
-                    </button>
-                </div>
-            </div>
+          <div style={styles.overlay}>
+             <div style={{marginBottom:'20px'}}>
+               {level === 1 && <Zap size={60} color={GAME_CONFIG.theme.colors.accent} />}
+               {level === 2 && <Anchor size={60} color={GAME_CONFIG.theme.colors.secondary} />}
+               {level === 3 && <Activity size={60} color={GAME_CONFIG.theme.colors.danger} />}
+               {level === 4 && <Check size={60} color={GAME_CONFIG.theme.colors.primary} />}
+             </div>
+             <h2 style={{fontSize:'24px', fontWeight:'800', marginBottom:'10px'}}>
+               {currentLevelConfig.title}
+             </h2>
+             <p style={{lineHeight:'1.5', color:'#666', marginBottom:'30px'}}>
+               {currentLevelConfig.description}
+             </p>
+             <button 
+               onClick={() => setShowTutorial(false)}
+               style={{...styles.button, backgroundColor: GAME_CONFIG.theme.colors.primary, width:'auto', padding:'15px 40px'}}
+             >
+               I'M READY
+             </button>
+          </div>
         )}
 
-        {/* CANVAS */}
-        <div className="relative rounded-2xl overflow-hidden bg-slate-50 border-2 border-slate-100 h-[300px] md:h-[400px]">
-             <canvas 
-                ref={canvasRef} 
-                width={600} 
-                height={400} 
-                className="w-full h-full object-cover"
-             />
-             
-             {/* LEVEL 3+ METERS OVERLAY */}
-             {level >= 3 && (
-                 <div className="absolute top-4 left-4 right-4 flex gap-4 bg-white/90 p-3 rounded-2xl shadow-sm border border-slate-100 backdrop-blur">
-                    <HealthMeter label="Stress" value={stress} color={colors.danger} icon={ActivityIcon} />
-                    <HealthMeter label="Stagnation" value={stagnation} color={colors.dark} icon={Anchor} />
-                 </div>
-             )}
+        {/* Canvas */}
+        <div style={styles.canvasContainer}>
+          <canvas 
+            ref={canvasRef}
+            width={600}
+            height={400}
+            style={{width:'100%', height:'100%', objectFit:'contain'}}
+          />
+          
+          {/* Level 3+ HUD */}
+          {level >= 3 && !showTutorial && (
+            <div style={{
+              position:'absolute', top:'10px', left:'10px', right:'10px', 
+              display:'flex', gap:'10px', backgroundColor:'rgba(255,255,255,0.9)', 
+              padding:'10px', borderRadius:'12px', border:`2px solid #EEE`
+            }}>
+              <HealthBar label="Stress" val={stress} color={GAME_CONFIG.theme.colors.danger} />
+              <HealthBar label="Stagnation" val={stagnation} color={GAME_CONFIG.theme.colors.textMain} />
+            </div>
+          )}
         </div>
-
       </div>
 
-      {/* CONTROLS AREA */}
-      <div className="w-full max-w-2xl mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* SLIDERS CARD */}
-        <div className="bg-white p-6 rounded-3xl border-2 border-slate-100 shadow-[0_4px_0_0_rgba(0,0,0,0.05)]">
-            
-            {/* INNOVATION SLIDER */}
-            <div className="mb-6">
-                <div className="flex justify-between font-bold text-slate-700 mb-2">
-                    <span className="flex items-center gap-2"><Zap size={20} color={colors.accent} fill={colors.accent}/> Innovation</span>
-                    <span className="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-lg text-xs">{innovation}</span>
-                </div>
-                <input 
-                    type="range" min="0" max="100" value={innovation} 
-                    onChange={(e) => setInnovation(parseInt(e.target.value))}
-                    className="w-full h-4 bg-slate-200 rounded-full appearance-none cursor-pointer accent-yellow-400"
-                    style={{ accentColor: colors.accent }}
-                />
-            </div>
-
-            {/* DISCIPLINE SLIDER (LOCKED UNTIL LEVEL 2) */}
-            <div className={`transition-all duration-500 ${level < 2 ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
-                <div className="flex justify-between font-bold text-slate-700 mb-2">
-                    <span className="flex items-center gap-2">
-                        <Anchor size={20} color={colors.secondary} /> 
-                        {level < 2 ? "Discipline (Locked)" : "Discipline"}
-                    </span>
-                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-lg text-xs">{discipline}</span>
-                </div>
-                <input 
-                    type="range" min="0" max="100" value={discipline} 
-                    onChange={(e) => setDiscipline(parseInt(e.target.value))}
-                    className="w-full h-4 bg-slate-200 rounded-full appearance-none cursor-pointer"
-                    style={{ accentColor: colors.secondary }}
-                />
-            </div>
+      {/* CONTROLS CARD */}
+      <div style={styles.card}>
+        <div style={styles.controlRow}>
+          {/* Innovation Slider (Always Unlocked) */}
+          <Slider 
+            label="Innovation (Energy)" 
+            val={innovation} 
+            setVal={setInnovation} 
+            color={GAME_CONFIG.theme.colors.accent}
+            locked={false}
+          />
+          
+          {/* Discipline Slider (Unlock Lvl 2) */}
+          <Slider 
+            label="Discipline (Container)" 
+            val={discipline} 
+            setVal={setDiscipline} 
+            color={GAME_CONFIG.theme.colors.secondary} 
+            locked={level < 2}
+          />
         </div>
 
-        {/* ACTION / PROGRESS CARD */}
-        <div className="flex flex-col gap-4">
-            
-            {/* LEVEL UP BUTTON */}
-            {level < 4 && (
-                <div className="bg-white p-4 rounded-3xl border-2 border-slate-100 text-center">
-                    <p className="text-slate-400 text-sm font-bold mb-3 uppercase tracking-widest">Next Lesson</p>
-                    <button 
-                        onClick={nextLevel}
-                        className="w-full py-3 rounded-2xl font-bold text-slate-700 border-2 border-slate-200 hover:bg-slate-50 transition-colors"
-                    >
-                        {level === 1 ? "Unlock The Container" : 
-                         level === 2 ? "Unlock Biology" : "Unlock Architect Mode"}
-                    </button>
-                </div>
-            )}
+        {/* Level 4 Protocols */}
+        {level >= 4 && (
+           <div style={{display:'flex', gap:'10px', marginTop:'20px', borderTop:'2px solid #EEE', paddingTop:'20px'}}>
+              <ProtocolButton 
+                title="Deep Work Sprint" 
+                color={GAME_CONFIG.theme.colors.secondary}
+                onClick={() => { setInnovation(30); setDiscipline(90); }}
+              />
+              <ProtocolButton 
+                title="Brainstorm" 
+                color={GAME_CONFIG.theme.colors.accent}
+                onClick={() => { setInnovation(90); setDiscipline(20); }}
+              />
+           </div>
+        )}
 
-            {/* LEVEL 4 PROTOCOLS */}
-            {level === 4 && (
-                <div className="flex flex-col gap-3">
-                     <p className="text-slate-400 text-xs font-bold uppercase tracking-widest ml-2">Protocols</p>
-                     <ScenarioButton 
-                        title="Deep Work Sprint" 
-                        color={colors.secondary} 
-                        action={() => { setDiscipline(90); setInnovation(30); }} 
-                     />
-                     <ScenarioButton 
-                        title="Creative Wander" 
-                        color={colors.accent} 
-                        action={() => { setDiscipline(20); setInnovation(90); }} 
-                     />
-                </div>
-            )}
-            
-            {/* RESET */}
+        {/* Progress / Play Controls */}
+        <div style={{marginTop:'30px', display:'flex', gap:'10px'}}>
+           {level < 4 && (
              <button 
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="flex items-center justify-center gap-2 text-slate-400 font-bold hover:text-slate-600 transition-colors mt-2"
-            >
-                {isPlaying ? <Pause size={16}/> : <Play size={16}/>} 
-                {isPlaying ? "Pause" : "Resume"}
-            </button>
+               onClick={handleLevelUp}
+               style={{...styles.button, backgroundColor: '#FFF', color: GAME_CONFIG.theme.colors.textMain, border:`2px solid ${GAME_CONFIG.theme.colors.border}`, borderBottomWidth:'4px'}}
+             >
+               Next Level <ArrowRight size={16}/>
+             </button>
+           )}
+           <button 
+             onClick={() => setIsPlaying(!isPlaying)}
+             style={{...styles.button, backgroundColor: '#FFF', color: GAME_CONFIG.theme.colors.textLight, border:'2px solid #F0F0F0', borderBottomWidth:'4px', width: level < 4 ? '60px' : '100%'}}
+           >
+             {isPlaying ? <Pause size={20}/> : <Play size={20}/>}
+           </button>
         </div>
-
       </div>
+
     </div>
   );
 };
-
-// Simple Icon wrapper for logic
-const ActivityIcon = (props) => (
-    <svg 
-      {...props}
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" height="24" viewBox="0 0 24 24" 
-      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-    >
-      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-    </svg>
-);
 
 export default StructureSimulator;
